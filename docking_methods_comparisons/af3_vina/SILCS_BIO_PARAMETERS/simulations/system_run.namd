@@ -1,0 +1,155 @@
+############### global settings ###############
+set temperature 300
+set prevSim system_eq000
+set curSim system_run
+
+############### functions ###############
+
+proc get_first_ts { xscfile } {
+        set fd [open $xscfile r]
+        gets $fd
+        gets $fd
+        gets $fd line
+        set ts [lindex $line 0]
+        close $fd
+        return $ts
+}
+
+############### basic input ###############
+structure       system.psf
+coordinates     system.pdb
+paraTypeCharmm  on
+
+parameters      ../../../../../../toppar/6309.str
+parameters      ../../../../../../toppar/6085.str
+parameters      ../../../../../../toppar/30999.str
+parameters      ../../../../../../toppar/par_all36m_prot.prm
+parameters      ../../../../../../toppar/par_all36_na.prm
+parameters      ../../../../../../toppar/par_all36_carb.prm
+parameters      ../../../../../../toppar/par_all36_lipid.prm
+parameters      ../../../../../../toppar/par_all36_cgenff.prm
+parameters      ../../../../../../toppar/par_interface.prm
+parameters      ../../../../../../toppar/toppar_all36_nano_lig.str
+parameters      ../../../../../../toppar/toppar_all36_nanolig_patch.str
+parameters      ../../../../../../toppar/toppar_all36_synthetic_polymer.str
+parameters      ../../../../../../toppar/toppar_all36_synthetic_polymer_patch.str
+parameters      ../../../../../../toppar/toppar_all36_polymer_solvent.str
+parameters      ../../../../../../toppar/toppar_water_ions.str
+parameters      ../../../../../../toppar/toppar_dum_noble_gases.str
+parameters      ../../../../../../toppar/toppar_ions_won.str
+parameters      ../../../../../../toppar/toppar_all36_prot_arg0.str
+parameters      ../../../../../../toppar/toppar_all36_prot_c36m_d_aminoacids.str
+parameters      ../../../../../../toppar/toppar_all36_prot_fluoro_alkanes.str
+parameters      ../../../../../../toppar/toppar_all36_prot_heme.str
+parameters      ../../../../../../toppar/toppar_all36_prot_retinol.str
+parameters      ../../../../../../toppar/toppar_all36_prot_na_combined.str
+parameters      ../../../../../../toppar/toppar_all36_na_nad_ppi.str
+parameters      ../../../../../../toppar/toppar_all36_prot_modify_res.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_archaeal.str
+parameters      ../../../../../../toppar/toppar_all36_na_rna_modified.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_cardiolipin.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_bacterial.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_dag.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_cholesterol.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_lps.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_inositol.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_model.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_miscellaneous.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_sphingo.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_prot.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_hmmm.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_yeast.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_ether.str
+parameters      ../../../../../../toppar/toppar_all36_lipid_detergent.str
+parameters      ../../../../../../toppar/toppar_all36_carb_glycopeptide.str
+parameters      ../../../../../../toppar/toppar_all36_carb_glycolipid.str
+parameters      ../../../../../../toppar/toppar_all36_label_spin.str
+parameters      ../../../../../../toppar/toppar_all36_carb_imlab.str
+parameters      ../../../../../../toppar/toppar_all36_label_fluorophore.str
+
+1-4scaling      1
+exclude         scaled1-4
+###########################################
+
+############# restart input ###############
+set runnum [llength [glob -nocomplain ${curSim}\[0-9\]\[0-9\]\[0-9\].coor]]
+
+if { $runnum < 1 } {
+	firsttimestep 0
+	set firsttime 0
+	set inputname $prevSim
+} else {
+	set inputname [format "${curSim}%03d" [expr $runnum-1]]
+	set firsttime [get_first_ts ./$inputname.restart.xsc]
+	firsttimestep $firsttime
+}
+
+
+bincoordinates $inputname.restart.coor
+extendedsystem $inputname.restart.xsc
+binvelocities $inputname.restart.vel
+###########################################
+
+########### output options ################
+outputname              [format "${curSim}%03d" $runnum]
+binaryoutput            yes
+binaryrestart           yes
+outputEnergies          1000
+outputTiming            10000
+restartfreq             5000
+dcdfreq                 5000
+wrapALL                 on
+wrapNearest             on
+###########################################
+
+########### simulation options ############
+# Basic dynamics
+dielectric              1.0
+# Cutoff switching
+switching               on
+vdwForceSwitching       on
+LJCorrection on
+switchdist              10
+cutoff                  12
+pairlistdist            14
+rigidbonds              all
+
+# Multiple timestepping
+timestep                2
+stepspercycle           100
+fullElectFrequency      1
+# PME
+PME            on
+PMEGridSpacing 1.2
+###########################################
+
+############# Thermostat ##################
+langevin                on
+langevinTemp            $temperature
+langevinHydrogen        on
+langevinDamping         1.0
+###########################################
+
+######## Constant Pressure Control ########
+useGroupPressure                  yes
+LangevinPiston                    on
+LangevinPistonTarget              1.01325
+LangevinPistonPeriod              200
+LangevinPistonDecay               100
+LangevinPistonTemp                $temperature
+useConstantRatio no
+useFlexibleCell no
+###########################################
+
+########### custom includes ###############
+CUDASOAIntegrate on
+###########################################
+
+#3 ns each
+#set firsttime 0 
+#remove above later
+set numsteps [expr { 750000000 - $firsttime }]
+if { $numsteps > 1500000 } {
+set numsteps 1500000 
+}
+run $numsteps
