@@ -1,0 +1,24 @@
+Chemspider ID,Common Name,molNum,Interest
+780,Auxin,,
+2169,Atrazine,,
+6085,Ethylene,, found ETR1 (arabidopsis) has Kd of 2.4 * 10^-9 
+6309,Isoprene,,
+4444606,Jasmonic Acid,,
+23208,Ozone,,
+4444418,(+)-Abscisic acid,,
+6223,(+)-Giberillic acid,, i think had 1-2
+3698,Kinetin,,1 PDBBind
+395716,trans-Zeatin,, 1 PDBBind
+30999,Diphenylurea,,
+21105998,Thymol,, 1 PDBBind
+388386,(S)-(-)-Limonene,,
+13876103,Eugenol,, 1 PDBBind
+917,Nicotine,, 6 PDBBind (NCT)
+2424,Caffeine,,5 PDBBind (CFF)
+4450907,Morphine,,
+7930,Ergotamine,,1 PDBBind
+10194105,Atropine,, 1 PDBBind
+84989,Quinine,, 3 PDBBind (QI9)
+108426,dihydroquinine,,
+393012,Retinol,,
+4518347,Methoprene,,"Commonly used insecticide, can result from degrading retinol"
