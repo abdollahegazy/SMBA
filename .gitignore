@@ -10,7 +10,7 @@
 *.mol2
 *.sdf
 *.inp
-
+.env
 *temp*
 toppar/
 misc/
