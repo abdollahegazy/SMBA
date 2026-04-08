@@ -1,0 +1,78 @@
+from utils import load_pairs, DATA_DIR
+
+from varidock.stages import BoltzConfig, BoltzPredict
+from varidock.types import BoltzInput, Ligand
+
+
+
+def make_boltz_input(protein_id: str, ligand_id: str, smiles: str) -> BoltzInput | None:
+    # data_json = (
+    #     DATA_DIR / protein_id / "af_output" / protein_id / f"{protein_id}_data.json"
+    # )
+
+    data_json = (
+        DATA_DIR / protein_id /"MSA"/ protein_id / "af_output" / protein_id / f"{protein_id}_data.json"
+    )
+
+    output_dir = DATA_DIR / protein_id / "boltz" / ligand_id / "boltz_output"   
+    if not data_json.exists():
+        print(f"Skipping {protein_id}: no AF3 data JSON")
+        return None
+
+    return BoltzInput(
+        data_json_path=data_json,
+        protein_chain_id="P",
+        ligand=Ligand(name=ligand_id, smiles=smiles, af3_sequence_id="L"),
+        output_dir=output_dir,
+        name=f"{protein_id}_{ligand_id}",
+    )
+
+
+def run_one(args: tuple[BoltzInput, int]):
+    inp, gpu_id = args
+    predictor = BoltzPredict(BoltzConfig())
+    # override env per process
+    import os
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    predictor.run(inp, write_only=False)
+
+
+def is_boltz_done(protein_id: str, ligand_id: str) -> bool:
+    name = f"{protein_id}_{ligand_id}"
+    pdb = (
+        DATA_DIR
+        / protein_id
+        / "boltz"
+        / ligand_id
+        / "boltz_output"
+        / f"boltz_results_{name}"
+        / "predictions"
+        / name
+        / f"{name}_model_0.pdb"
+    )
+    return pdb.exists()
+
+
+def main():
+    pairs = load_pairs(DATA_DIR)
+    print(pairs)
+
+    predictor = BoltzPredict(BoltzConfig())
+
+    for protein_id, ligand_id, smiles in pairs:
+        if is_boltz_done(protein_id, ligand_id):
+            print(f"Skipping {protein_id} + {ligand_id}: already done")
+            continue
+
+        inp = make_boltz_input(protein_id, ligand_id, smiles)
+        if inp is None:
+            print(f"Skipping {protein_id} + {ligand_id}: could not make BoltzInput")
+            continue
+
+        print(f"Running {protein_id} + {ligand_id}")
+        predictor.run(inp, write_only=False)
+
+
+if __name__ == "__main__":
+    main()
