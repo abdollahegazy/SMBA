@@ -1,6 +1,6 @@
 from pathlib import Path
 
-DATA_DIR = Path("../data")
+DATA_DIR = Path("../data/predictions")
 
 def load_pairs(data_dir: Path = DATA_DIR) -> list[tuple[str, str, str]]:
     """
