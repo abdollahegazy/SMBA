@@ -29,7 +29,7 @@ def load_args() -> Namespace:
 
 def load_proteins() -> Dict[str, str]:
     data = pd.read_csv("../data/known_structures.csv")
-    proteins = data['measurement_id']
+    proteins = data['measurement_id'].map(lambda x: str(x).strip())
     seqs = data['sequences']
     return dict(zip(proteins, seqs))
 
@@ -40,12 +40,6 @@ def run_one(
 
     expected = (
         msa_input.output_dir.resolve()
-        / "af_output"
-        / msa_input.protein_id
-        / f"{msa_input.protein_id}_data.json"
-    )
-    expected_legacy = (
-        msa_input.output_dir.parent.resolve()
         / "af_output"
         / msa_input.protein_id
         / f"{msa_input.protein_id}_data.json"
