@@ -24,6 +24,12 @@ def load_args() -> Namespace:
         action="store_true",
         help="Run AF3 MSA jobs in parallel.",
     )
+    parser.add_argument(
+        "--max_workers",
+        type=int,
+        default=7,
+        help="Number of parallel workers to use if --parallel is set.",
+    )
     return parser.parse_args()
 
 
@@ -71,7 +77,7 @@ if __name__ == "__main__":
     ]
 
     if args.parallel:
-        with ProcessPoolExecutor(max_workers=4) as pool:
+        with ProcessPoolExecutor(max_workers=args.max_workers) as pool:
             futures = {}
             for p in protein_inputs:
                 out_dir = Path(f"../data/predictions/{p.name}/MSA").resolve()
