@@ -46,7 +46,7 @@ def run_one(
     )
 
 
-    if expected.exists() or expected_legacy.exists():
+    if expected.exists():
         print(f"{protein.name} already done, skipping")
         return AF3MSAOutput(
             data_json_path=expected,
