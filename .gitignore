@@ -36,6 +36,15 @@ output/
 __pycache__
 
 anaylze_outputs/
-.pdbqt
-.npz
-.surfpoints
+*.pdbqt
+*.npz
+*.surfpoints
+*.err
+centers.txt
+*.BAK
+*.cif
+*.png
+*.csv
+*.parquet
+*.tsv
+**/data/
