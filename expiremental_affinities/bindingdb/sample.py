@@ -69,11 +69,12 @@ def smiles_from_csv(csv_path: Path | str) -> dict[str, str]:
 
 _WORKER_Q_FP = None
 
-def _cannonical_smiles(smi: str) -> str:
+def _canonical_smiles(smi: str) -> str | None:
     mol = Chem.MolFromSmiles(smi)
     if mol is None:
-        return smi
-    return Chem.MolToSmiles(mol, canonical=True)
+        return None
+    return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
+
 
 def _init_similarity_worker(query_smiles: str):
     global _WORKER_Q_FP
@@ -119,34 +120,22 @@ def sample_complexes(
     if df.empty:
         return df
 
-    q_fp = _morgan_fp(query_smiles)
-    if q_fp is None:
+    # q_fp = _morgan_fp(query_smiles)
+    # if q_fp is None:
+    #     raise ValueError(f"could not parse query SMILES: {query_smiles!r}")
+
+    query_canon = _canonical_smiles(query_smiles)
+    if query_canon is None:
         raise ValueError(f"could not parse query SMILES: {query_smiles!r}")
 
-    unique_smiles = df["smiles"].drop_duplicates().tolist()
-    print(
-        f"[info] fingerprinting {len(unique_smiles):,} unique ligands", file=sys.stderr
-    )
 
-    workers = max(1,min(fingerprint_workers,len(unique_smiles)))
+    if "canonical_smiles" not in df.columns:
+        raise ValueError("index parquet is missing canonical_smiles column")
 
-    with ProcessPoolExecutor(
-        max_workers=workers,
-        initializer=_init_similarity_worker,
-        initargs=(query_smiles,),
-    ) as ex:
-        sims = dict(
-            tqdm(
-                ex.map(_score_smiles_tanimoto, unique_smiles, chunksize=500),
-                total=len(unique_smiles),
-                desc="fingerprints",
-                unit="mol",
-                disable=not show_progress,
-            )
-        )
+    hits = df[df["canonical_smiles"] == query_canon].copy()
 
-    df = df.assign(tanimoto=df["smiles"].map(sims))
-    hits = df[df["tanimoto"] >= similarity_cutoff].copy()
+    hits = hits.assign(tanimoto=1.0)
+    # hits = df[df["tanimoto"] >= similarity_cutoff].copy()
     print(
         f"[info] {len(hits):,} measurements >= cutoff {similarity_cutoff}",
         file=sys.stderr,
@@ -173,7 +162,7 @@ def _run_ligand_query(args: tuple[str, str]) -> tuple[str, int, pd.DataFrame]:
     name, smi = args
 
     hits = sample_complexes(
-        "bindingdb.parquet",
+        "bindingdb_with_canonical.parquet",
         query_smiles=smi,
         n=30,
         similarity_cutoff=1.0,
