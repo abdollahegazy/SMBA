@@ -34,3 +34,5 @@ complexes/
 *.dcd
 output/
 __pycache__
+
+anaylze_outputs/
