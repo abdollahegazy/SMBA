@@ -7,9 +7,7 @@ OUT_CSV = Path("../../data/known_structures_test.csv")
 
 
 
-
-
-def process_hit(filename:str):
+def process_hit(filename:Path):
     data = pd.read_csv(filename)
     affinities = data[['ki_nM', 'ic50_nM', 'kd_nM', 'ec50_nM']]
 

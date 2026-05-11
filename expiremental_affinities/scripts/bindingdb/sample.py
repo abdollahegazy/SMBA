@@ -15,7 +15,7 @@ mfp = rdFingerprintGenerator.GetMorganGenerator()
 
 CS = ChemSpider("TzfV80skfR1yCAe7oY4y06Q2s5Kzlff4a1NTNVq2")
 BINDINGDB_URL = "https://bindingdb.org/rest/getTargetByCompound"
-
+N = 20
 INTRA_LIGAND_WORKERS = 16
 INTER_LIGAND_WORKERS = 8
 _WORKER_Q_FP = None
@@ -143,7 +143,7 @@ def _run_ligand_query(args: tuple[str, str]) -> tuple[str, int, pd.DataFrame]:
     hits = sample_complexes(
         "../../data/bindingdb/bindingdb.parquet",
         query_smiles=smi,
-        n=3000,
+        n=N,
         similarity_cutoff=1.0,
         require_affinity=True,
         fingerprint_workers=INTRA_LIGAND_WORKERS,
@@ -185,5 +185,5 @@ if __name__ == "__main__":
     print(f"ligands with >=20 hits: {sum(1 for _, n, _ in results if n >= 20)}")
     
     for name, n_hits, hits in results:
-        if n_hits >= 20:
+        if n_hits >= N:
             hits.to_csv(f"../../data/bindingdb/hits/{name}.csv",index=False)
