@@ -1,15 +1,17 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 import csv
-import re
+import os
 import sys
 from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm import tqdm
-
+import re
+from rdkit import Chem
 
 
 CORE_COLS = {
@@ -139,6 +141,7 @@ def build_index(tsv_path: Path | str, out_path: Path | str, batch_size: int = 25
                 for k, v in row.items()
             }
             row["smiles"] = smi
+
             row["sequences"] = seqs
             row["uniprots"] = uids
             row["pdb_chains"] = pdbs
@@ -154,4 +157,42 @@ def build_index(tsv_path: Path | str, out_path: Path | str, batch_size: int = 25
     print(f"[done] parsed {n_total} rows, kept {n_kept} -> {out_path}", file=sys.stderr)
 
 
-build_index("BindingDB_All.tsv", "bindingdb.parquet", batch_size=50_000)
+# build_index("BindingDB_All.tsv", "bindingdb.parquet", batch_size=50_000)
+
+def canonical_smiles(smi: str) -> str | None:
+    mol = Chem.MolFromSmiles(str(smi))
+    if mol is None:
+        return None
+    return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
+
+
+def canonical_pair(smi: str) -> tuple[str, str | None]:
+    return smi, canonical_smiles(smi)
+
+
+if __name__ == "__main__":
+    in_path = Path("bindingdb.parquet")
+    out_path = Path("bindingdb_with_canonical.parquet")
+
+    df = pd.read_parquet(in_path)
+    print(f"loaded {len(df):,} rows")
+
+    unique_smiles = df["smiles"].dropna().drop_duplicates().tolist()
+    print(f"canonicalizing {len(unique_smiles):,} unique SMILES")
+
+    workers = max(1, (os.cpu_count() or 2) - 1)
+
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        canon_map = dict(
+            tqdm(
+                ex.map(canonical_pair, unique_smiles, chunksize=1000),
+                total=len(unique_smiles),
+                desc="canonicalizing",
+                unit="mol",
+            )
+        )
+
+    df["canonical_smiles"] = df["smiles"].map(canon_map)
+
+    df.to_parquet(out_path, index=False, compression="zstd")
+    print(f"wrote {out_path}")
