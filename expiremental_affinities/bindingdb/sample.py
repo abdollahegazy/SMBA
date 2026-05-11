@@ -5,7 +5,6 @@ randomly sample N of them, fetch protein sequences from UniProt.
 """
 
 
-import concurrent
 from rdkit import Chem, DataStructs
 from concurrent.futures import ProcessPoolExecutor,wait, as_completed
 import os
@@ -69,12 +68,6 @@ def smiles_from_csv(csv_path: Path | str) -> dict[str, str]:
 
 _WORKER_Q_FP = None
 
-def _canonical_smiles(smi: str) -> str | None:
-    mol = Chem.MolFromSmiles(smi)
-    if mol is None:
-        return None
-    return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
-
 
 def _init_similarity_worker(query_smiles: str):
     global _WORKER_Q_FP
@@ -107,7 +100,8 @@ def sample_complexes(
     organism_contains: str | None = None,
     fingerprint_workers: int = INTER_LIGAND_WORKERS,
     show_progress: bool = True,
-) -> pd.DataFrame:
+    match_stereo: bool = False,
+    **_) -> pd.DataFrame:
     df = pd.read_parquet(index_path)
     print(f"[info] index: {len(df):,} measurements", file=sys.stderr)
 
@@ -120,31 +114,24 @@ def sample_complexes(
     if df.empty:
         return df
 
-    # q_fp = _morgan_fp(query_smiles)
-    # if q_fp is None:
-    #     raise ValueError(f"could not parse query SMILES: {query_smiles!r}")
-
-    query_canon = _canonical_smiles(query_smiles)
-    if query_canon is None:
+    mol = Chem.MolFromSmiles(query_smiles)
+    if mol is None:
         raise ValueError(f"could not parse query SMILES: {query_smiles!r}")
+    q_key = Chem.MolToInchiKey(mol)
+    if not match_stereo:
+        q_key = q_key.split("-")[0]
+        df_keys = df["inchikey"].fillna("").str.split("-").str[0]
+    else:
+        df_keys = df["inchikey"].fillna("")
 
-
-    if "canonical_smiles" not in df.columns:
-        raise ValueError("index parquet is missing canonical_smiles column")
-
-    hits = df[df["canonical_smiles"] == query_canon].copy()
-
+    hits = df[df_keys == q_key].copy()
     hits = hits.assign(tanimoto=1.0)
-    # hits = df[df["tanimoto"] >= similarity_cutoff].copy()
-    print(
-        f"[info] {len(hits):,} measurements >= cutoff {similarity_cutoff}",
-        file=sys.stderr,
-    )
+    print(f"[info] {len(hits):,} measurements matched", file=sys.stderr)
     if hits.empty:
         return hits
 
-    hits["target_key"] = hits["uniprots"].map(
-        lambda xs: "|".join([u or "" for u in xs])  # type: ignore
+    hits["target_key"] = hits["uniprots"].map( 
+        lambda xs: "|".join([u or "" for u in xs]) #type: ignore
     )
     hits = (
         hits.sort_values("tanimoto", ascending=False)
@@ -162,9 +149,9 @@ def _run_ligand_query(args: tuple[str, str]) -> tuple[str, int, pd.DataFrame]:
     name, smi = args
 
     hits = sample_complexes(
-        "bindingdb_with_canonical.parquet",
+        "bindingdb.parquet",
         query_smiles=smi,
-        n=30,
+        n=3000,
         similarity_cutoff=1.0,
         require_affinity=True,
         fingerprint_workers=INTRA_LIGAND_WORKERS,

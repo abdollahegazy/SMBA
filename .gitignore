@@ -36,3 +36,6 @@ output/
 __pycache__
 
 anaylze_outputs/
+.pdbqt
+.npz
+.surfpoints
