@@ -5,15 +5,20 @@ randomly sample N of them, fetch protein sequences from UniProt.
 """
 
 
+import concurrent
 from rdkit import Chem, DataStructs
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor,wait, as_completed
 import os
 import sys
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
+from rdkit import RDLogger
 from rdkit.Chem import rdFingerprintGenerator
 from chemspipy import ChemSpider
+
+lg = RDLogger.logger()
+lg.setLevel(RDLogger.CRITICAL)
 
 mfp = rdFingerprintGenerator.GetMorganGenerator()
 CS = ChemSpider("TzfV80skfR1yCAe7oY4y06Q2s5Kzlff4a1NTNVq2")
@@ -64,6 +69,11 @@ def smiles_from_csv(csv_path: Path | str) -> dict[str, str]:
 
 _WORKER_Q_FP = None
 
+def _cannonical_smiles(smi: str) -> str:
+    mol = Chem.MolFromSmiles(smi)
+    if mol is None:
+        return smi
+    return Chem.MolToSmiles(mol, canonical=True)
 
 def _init_similarity_worker(query_smiles: str):
     global _WORKER_Q_FP
@@ -163,13 +173,13 @@ def _run_ligand_query(args: tuple[str, str]) -> tuple[str, int, pd.DataFrame]:
     name, smi = args
 
     hits = sample_complexes(
-        "bindingdb_index.parquet",
+        "bindingdb.parquet",
         query_smiles=smi,
-        n=10,
+        n=30,
         similarity_cutoff=1.0,
         require_affinity=True,
         fingerprint_workers=INTRA_LIGAND_WORKERS,
-        show_progress=False,
+        show_progress=True,
     )
 
     return name, len(hits), hits
@@ -177,6 +187,10 @@ def _run_ligand_query(args: tuple[str, str]) -> tuple[str, int, pd.DataFrame]:
 
 if __name__ == "__main__":
     ligands = smiles_from_csv("ligands.csv")
+    
+    # test using only the first two ligands
+    # ligands = dict(list(ligands.items())[:2])
+
     print(f"got {len(ligands)} ligands from CSV")
 
     total_cores = os.cpu_count() or 8
@@ -189,14 +203,23 @@ if __name__ == "__main__":
     )
 
     with ProcessPoolExecutor(max_workers=inter_workers) as ex:
-        results = list(
-            tqdm(
-                ex.map(_run_ligand_query, ligands.items()),
-                total=len(ligands),
-                desc="ligands",
-                unit="ligand",
-            )
-        )
-
+        futures = [ex.submit(_run_ligand_query, (name, smi)) for name, smi in ligands.items()]
+        results = []
+        for future in tqdm(as_completed(futures), total=len(futures), desc="ligands", unit="ligand"):
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                print(f"[error] ligand query failed: {e}", file=sys.stderr)
+    wait(futures)  # ensure all futures are completed before proceeding
+        # results = list(
+        #     tqdm(
+        #         ex.map(_run_ligand_query, ligands.items()),
+        #         total=len(ligands),
+        #         desc="ligands",
+        #         unit="ligand",
+        #     )
+        # )
+    
     for name, n_hits, hits in results:
         print(f"found {n_hits} hits for {name}")
