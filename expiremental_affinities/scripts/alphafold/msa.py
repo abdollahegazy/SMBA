@@ -1,3 +1,5 @@
+import os
+import signal
 from pathlib import Path
 import pandas as pd
 import argparse
@@ -8,6 +10,12 @@ from argparse import Namespace
 from varidock.stages import AF3MSA, AF3InputBuilder
 from varidock.runners.af3 import AF3Config
 from varidock.types import ProteinSequence, AF3MSAOutput
+
+
+def _worker_init():
+    os.setpgrp()
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
 
 
 def load_args() -> Namespace:
@@ -77,8 +85,9 @@ if __name__ == "__main__":
     ]
 
     if args.parallel:
-        with ProcessPoolExecutor(max_workers=args.max_workers) as pool:
-            futures = {}
+        pool = ProcessPoolExecutor(max_workers=args.max_workers, initializer=_worker_init)
+        futures = {}
+        try:
             for p in protein_inputs:
                 out_dir = Path(f"../data/predictions/{p.name}/MSA").resolve()
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -87,6 +96,16 @@ if __name__ == "__main__":
             for f in as_completed(futures):
                 print(f"{futures[f]} done")
                 f.result()
+        except KeyboardInterrupt:
+            for fut in futures:
+                fut.cancel()
+            for pid in list(pool._processes):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+
+        pool.shutdown(wait=False,cancel_futures=True)
     else:
         for p in protein_inputs:
             out_dir = Path(f"../data/predictions/{p.name}/MSA").resolve()
