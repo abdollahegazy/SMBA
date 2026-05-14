@@ -1,11 +1,15 @@
 import shutil
 from argparse import ArgumentParser, Namespace
+from pathlib import Path
 
 from varidock.runners import AF3Config
 from varidock.stages import AF3Inference
 from varidock.types import AF3MergedInput
 
+
 from utils import DATA_DIR, load_proteins
+
+
 
 def load_args() -> Namespace:
     parser = ArgumentParser(description="Run AF3 inference on generated MSAs.")
@@ -14,21 +18,13 @@ def load_args() -> Namespace:
     return parser.parse_args()
 
 
-
 def run_one(af3_inference: AF3Inference, protein_id: str) -> None:
     if is_inference_done(protein_id):
         print(f"{protein_id} already done, skipping")
         return
+    
+    data_json = get_data_json_path(protein_id)
 
-    data_json = (
-        DATA_DIR
-        / protein_id
-        / "MSA"
-        / protein_id
-        / "af_output"
-        / protein_id
-        / f"{protein_id}_data.json"
-    )
     if not data_json.exists():
         print(f"Skipping {protein_id}: no data JSON")
         return
@@ -50,6 +46,17 @@ def run_one(af3_inference: AF3Inference, protein_id: str) -> None:
     print(f"Running inference for {protein_id}")
     af3_inference.run(inp)
 
+def get_data_json_path(protein_id:str) -> Path:
+    return  (
+        DATA_DIR
+        / protein_id
+        / "MSA"
+        / protein_id
+        / "af_output"
+        / protein_id
+        / f"{protein_id}_data.json"
+    )
+
 def is_inference_done(protein_id: str) -> bool:
     cif = (
         DATA_DIR
@@ -61,9 +68,12 @@ def is_inference_done(protein_id: str) -> bool:
     )
     return cif.exists()
 
+
+
 def main():
     args = load_args()
-    proteins = load_proteins(DATA_DIR)
+    proteins = sorted(load_proteins(DATA_DIR))
+
 
     af3_cfg = AF3Config.from_config(
         singularity_args=("--nv",),
@@ -72,7 +82,7 @@ def main():
 
     af3_inference = AF3Inference(
         af3_cfg,
-        jax_cache_dir="~/.cache",
+        jax_cache_dir="/mnt/scratch/hegazyab/.cache",
         write_only=args.write_only,
         overwrite_input=args.overwrite_inp,
     )
