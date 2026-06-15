@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=24G
-#SBATCH --time=1:0:0
+#SBATCH --time=4:0:0
 #SBATCH --account=vermaaslab
 #SBATCH --job-name=runDUMMY_NAME
 

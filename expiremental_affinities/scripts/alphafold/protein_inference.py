@@ -6,7 +6,6 @@ from varidock.runners import AF3Config
 from varidock.stages import AF3Inference
 from varidock.types import AF3MergedInput
 
-
 from utils import DATA_DIR, load_proteins
 
 

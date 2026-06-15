@@ -1,14 +1,14 @@
 from pathlib import Path
 from tqdm import tqdm
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from utils import load_proteins, DATA_DIR
-
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from utils import load_proteins, DATA_DIR,_worker_init
+import signal
+import os
 from varidock.types import PDB
 from varidock.stages.vmd_equil_prep import VMDEquilPrep, VMDEquilPrepConfig
 from varidock.pipeline import Pipeline
 
-
-MAX_WORKERS = 8
+MAX_WORKERS = 12
 TOPPAR_DIR = Path("./smba/src/toppar/")
 TEMPLATE_DIR = Path("./smba/src/equil/")
 
@@ -56,14 +56,23 @@ def process_protein(protein_id: str) -> None:
 def main():
     proteins = load_proteins()
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        futures = [ex.submit(process_protein, pid) for pid in proteins]
-
+    pool = ProcessPoolExecutor(max_workers=MAX_WORKERS,initializer=_worker_init)
+    futures = {pool.submit(process_protein, pid): pid for pid in proteins}
+    try:
         for fut in tqdm(
             as_completed(futures), total=len(futures), desc="Prepping equilibration"
         ):
             fut.result()
+    except KeyboardInterrupt:
+        for fut in futures:
+            fut.cancel()
+        for pid in list(pool._processes):
+            try:
+                os.killpg(pid,signal.SIGTERM)
+            except ProcessLookupError:
+                pass
 
+   
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,7 @@ from varidock.stages.cif_to_pdb import CIFToPDB, CIFToPDBConfig
 from varidock.stages.insert_plddt_to_pdb import InsertPLDDT, InsertPLDDTConfig
 from varidock.pipeline import Pipeline
 
-MAX_WORKERS = 8
+MAX_WORKERS = 16
 
 
 def process_protein(protein_id: str) -> None:

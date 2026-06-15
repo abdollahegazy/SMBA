@@ -35,7 +35,7 @@ def create_complex(protein_path:Path,ligand_path:Path,outpath:Path):
 
 
 def main():
-    data = pd.read_csv(DATA_DIR / 'docking_results.csv')
+    data = pd.read_csv(DATA_DIR.parent / 'docking_results.csv')
 
     for _, row in data.iterrows():
         protein = row['protein']
@@ -67,6 +67,7 @@ def main():
 
         create_complex(corresponding_protein,ligand_filepath,outpath)
         ligand_filepath.unlink() 
+        break
 
 
 

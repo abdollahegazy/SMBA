@@ -1,29 +1,18 @@
+import csv
 from pathlib import Path
 
 DATA_DIR = Path("../data/predictions")
+KNOWN_STRUCTURES_CSV = Path("../data/known_structures.csv")
 
-def load_pairs(data_dir: Path = DATA_DIR) -> list[tuple[str, str, str]]:
+def load_pairs(csv_path: Path = KNOWN_STRUCTURES_CSV) -> list[tuple[str, str, str]]:
     """
-    Discover (protein_id, ligand_id, smiles_or_ccd) from directory structure.
+    Read (protein_id, ligand_id, smiles) from known_structures.csv.
+    protein_id is measurement_id.
     """
-
     pairs = []
-    for protein_dir in sorted(data_dir.iterdir()):
-        if not protein_dir.is_dir():
-            continue
-        ligands_dir = protein_dir / "ligands"
-        if not ligands_dir.exists():
-            continue
-        
-        for lig_file in sorted(ligands_dir.iterdir()):
-            ligand_id = lig_file.stem
-            if lig_file.suffix == ".smiles":
-                value = lig_file.read_text().strip()
-            elif lig_file.suffix == ".ccd":
-                value = lig_file.read_text().strip()
-            else:
-                continue
-            pairs.append((protein_dir.name, ligand_id, value))
+    with open(csv_path, newline="") as f:
+        for row in csv.DictReader(f):
+            pairs.append((row["measurement_id"], row["ligand_id"].split(".")[0], row["smiles"]))
     return pairs
 
 def load_proteins(data_dir: Path = DATA_DIR) -> list[str]:

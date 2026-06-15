@@ -18,8 +18,8 @@ def parse_args() -> Namespace:
 
 
 def get_target_ligand_center(
-        protein_id: str, 
-        ligand_id: str, 
+        protein_id: str,
+        ligand_id: str,
         conformation_idx: int,
         pocket_idx: int,
         reference: str) -> tuple[float, float, float]:
@@ -35,7 +35,7 @@ def get_target_ligand_center(
 
     #this stays stationary
     smba_universe = Universe(str(smba_path.resolve()))
-    #this is aligned onto SMBA 
+    #this is aligned onto SMBA
     other_universe = Universe(str(other_path.resolve()))
 
     rmsd_align(
@@ -49,8 +49,8 @@ def get_target_ligand_center(
     return ligand_center(other_universe, "chainID L")
 
 def generate_vina_ligand_at_other_center(
-        protein_id: str, 
-        ligand_id: str, 
+        protein_id: str,
+        ligand_id: str,
         conformation_idx: int,
         pocket_idx: int,
         reference: str) -> Tuple[Path, PocketCenter]:
@@ -64,7 +64,7 @@ def generate_vina_ligand_at_other_center(
         raise ValueError(
             f"Missing ligand PDBQT for {ligand_id} in {protein_id} for c={conformation_idx} p={pocket_idx}"
         )
-    
+
     # read ligand pdbqt, shift by difference in centers, write new pdbqt
     lines = ligand_pdbqt.read_text().splitlines()
     atom_idx = []
@@ -75,7 +75,7 @@ def generate_vina_ligand_at_other_center(
             atom_idx.append(i)
             coords.append([x, y, z])
     coords = np.array(coords, dtype=float)
-    current_center = coords.mean(axis=0)  
+    current_center = coords.mean(axis=0)
     shift = target_center - current_center
 
     # apply translation
@@ -112,7 +112,7 @@ def docking(
     log_file = out_dir / f"out_c{conformation_idx}_p{pocket_idx}.log"
     if log_file.exists() and log_file.stat().st_size > 0:
         print(f"Skipping docking for {protein_id} c{conformation_idx} p{pocket_idx} - log already exists")
-        return  
+        return
     receptor = PDBQT(
         Path(f"../data/{protein_id}/protein_receptors/protein_conf{conformation_idx}.pdbqt")
     )
@@ -139,7 +139,7 @@ def main():
 
     ligand_path, pocket_center = generate_vina_ligand_at_other_center(
         protein_id, ligand_id, conformation_idx, pocket_idx, reference)
-    
+
     docking_dir = ligand_path.parents[2] / "docking" / ligand_path.parent.name
 
     docking(

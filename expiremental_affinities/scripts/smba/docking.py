@@ -10,9 +10,9 @@ from varidock.stages.vina_dock import VinaDocking, VinaDockingConfig
 from varidock.types import DockingInput, PocketCenter, PDBQT
 
 
-MAX_WORKERS = 1
+MAX_WORKERS = 16
 NUM_CONFS = 11
-TAR = False
+TAR = True
 
 def is_complete(log_file: Path) -> bool:
     if not log_file.exists() or log_file.stat().st_size == 0:
@@ -106,6 +106,7 @@ def process_protein(protein_id: str, ligand_id: str) -> None:
     if (protein_dir / "docking.tar.gz").exists():
         return
 
+    print(f"Processing {protein_id} + {ligand_id}")
     jobs = gather_jobs(protein_id, ligand_id)
     if not jobs:
         print(f"  {protein_id}: all done, tarring...")
@@ -129,7 +130,6 @@ def process_protein(protein_id: str, ligand_id: str) -> None:
 def main():
     pairs = load_pairs()
     for protein_id, ligand_id, _ in pairs:
-        print(f"Processing {protein_id} + {ligand_id}")
         process_protein(protein_id, ligand_id)
 
 

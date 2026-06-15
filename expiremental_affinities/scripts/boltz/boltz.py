@@ -3,6 +3,19 @@ from utils import load_pairs, DATA_DIR
 from varidock.stages import BoltzConfig, BoltzPredict
 from varidock.types import BoltzInput, Ligand
 
+#diffusionv2.py
+# i had to move svd to cpu 
+# i coudlnt figure out some linalg backend issue for my life lol
+
+import os
+
+
+# without this boltz launches a billion cpus and we reach the
+# cpu walltime limit in like 4 min
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "4")
 
 
 def make_boltz_input(protein_id: str, ligand_id: str, smiles: str) -> BoltzInput | None:
@@ -14,7 +27,7 @@ def make_boltz_input(protein_id: str, ligand_id: str, smiles: str) -> BoltzInput
         DATA_DIR / protein_id /"MSA"/ protein_id / "af_output" / protein_id / f"{protein_id}_data.json"
     )
 
-    output_dir = DATA_DIR / protein_id / "boltz" / ligand_id / "boltz_output"   
+    output_dir = DATA_DIR / protein_id / "boltz" / ligand_id
     if not data_json.exists():
         print(f"Skipping {protein_id}: no AF3 data JSON")
         return None
@@ -40,7 +53,7 @@ def run_one(args: tuple[BoltzInput, int]):
 
 def is_boltz_done(protein_id: str, ligand_id: str) -> bool:
     name = f"{protein_id}_{ligand_id}"
-    pdb = (
+    aff = (
         DATA_DIR
         / protein_id
         / "boltz"
@@ -49,16 +62,17 @@ def is_boltz_done(protein_id: str, ligand_id: str) -> bool:
         / f"boltz_results_{name}"
         / "predictions"
         / name
-        / f"{name}_model_0.pdb"
+        / f"affinity_{name}.json"
     )
-    return pdb.exists()
+    return aff.exists()
 
 
 def main():
-    pairs = load_pairs(DATA_DIR)
-    print(pairs)
+    pairs = load_pairs()
 
-    predictor = BoltzPredict(BoltzConfig())
+    predictor = BoltzPredict(
+        BoltzConfig()
+    )
 
     for protein_id, ligand_id, smiles in pairs:
         if is_boltz_done(protein_id, ligand_id):
@@ -71,7 +85,10 @@ def main():
             continue
 
         print(f"Running {protein_id} + {ligand_id}")
-        predictor.run(inp, write_only=False)
+        try:
+            predictor.run(inp, write_only=False)
+        except Exception as e:
+            print(f"Error running Boltz for {protein_id} + {ligand_id}: {e}")
 
 
 if __name__ == "__main__":

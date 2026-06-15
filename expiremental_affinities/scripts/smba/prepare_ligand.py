@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from utils import load_pairs, DATA_DIR
+import traceback
 
 from varidock.stages.meeko_ligand_prep import MeekoLigandPrep, MeekoLigandPrepConfig
 from varidock.stages.center_ligand_to_pocket import CenterLigand, CenterLigandConfig
@@ -14,14 +15,58 @@ NUM_CONFS = 11
 
 
 
+# def smiles_to_pdb(smiles: str, output_path: Path) -> None:
+#     mol = Chem.MolFromSmiles(smiles)
+#     if mol is None:
+#         raise ValueError(f"Invalid SMILES: {smiles}")
+#     mol = Chem.AddHs(mol)
+#     AllChem.EmbedMolecule(mol, randomSeed=42) #type: ignore
+#     AllChem.MMFFOptimizeMolecule(mol) #type: ignore
+#     Chem.MolToPDBFile(mol, str(output_path))
+
+# atropine is rlly weird and would fail for this (also did smth similar for boltz)
+# so we are doing this hack
 def smiles_to_pdb(smiles: str, output_path: Path) -> None:
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         raise ValueError(f"Invalid SMILES: {smiles}")
     mol = Chem.AddHs(mol)
-    AllChem.EmbedMolecule(mol, randomSeed=42) #type: ignore
-    AllChem.MMFFOptimizeMolecule(mol) #type: ignore
+
+    # Snapshot stereo for re-imposition if we fall back
+    original_atom_chirality = [a.GetChiralTag() for a in mol.GetAtoms()]
+    original_bond_stereo = [b.GetStereo() for b in mol.GetBonds()]
+
+    params = AllChem.ETKDGv3()
+    params.randomSeed = 42
+    conf_id = AllChem.EmbedMolecule(mol, params)
+
+    if conf_id == -1:
+        params.useRandomCoords = True
+        conf_id = AllChem.EmbedMolecule(mol, params)
+
+    if conf_id == -1:
+        params.enforceChirality = False
+        params.ignoreSmoothingFailures = True
+        conf_id = AllChem.EmbedMolecule(mol, params)
+        if conf_id != -1:
+            # re-impose stereo on the relaxed embed
+            for atom, tag in zip(mol.GetAtoms(), original_atom_chirality):
+                atom.SetChiralTag(tag)
+            for bond, stereo in zip(mol.GetBonds(), original_bond_stereo):
+                bond.SetStereo(stereo)
+
+    if conf_id == -1:
+        raise ValueError(f"Failed to embed conformer for SMILES: {smiles}")
+
+    # Try MMFF; fall back to UFF since MMFF doesn't cover all atom types
+    try:
+        if AllChem.MMFFOptimizeMolecule(mol, confId=conf_id, maxIters=2000) == -1:
+            AllChem.UFFOptimizeMolecule(mol, confId=conf_id, maxIters=2000)
+    except Exception:
+        AllChem.UFFOptimizeMolecule(mol, confId=conf_id, maxIters=2000)
+
     Chem.MolToPDBFile(mol, str(output_path))
+
 
 
 def process_protein(protein_id: str, ligand_id: str, smiles: str) -> None:
@@ -81,6 +126,7 @@ def main():
                 fut.result()
             except Exception as e:
                 print(f"ERROR: {e}")
+                traceback.print_exc()
 
 
 if __name__ == "__main__":

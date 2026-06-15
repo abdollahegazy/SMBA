@@ -11,11 +11,8 @@ from varidock.stages import AF3MSA, AF3InputBuilder
 from varidock.runners.af3 import AF3Config
 from varidock.types import ProteinSequence, AF3MSAOutput
 from varidock.execution import SlurmConfig, SlurmExecutor
+from utils import _worker_init
 
-
-def _worker_init():
-    os.setpgrp()
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def load_args() -> Namespace:
