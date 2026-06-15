@@ -18,7 +18,8 @@
 .PHONY: all list status refresh-scripts eq-local eq-slurm submit progress clean-done
 
 DATA          := ../../data/predictions
-TOPPAR_BASE   := /serviceberry/tank/abdolla/SMBA/docking_methods_comparisons/vina_boltz/parameter_testing/toppar_from_af3_vina
+# flat CHARMM36 set + complete par_all36_cgenff.prm (c36 feb26)
+TOPPAR_BASE   := toppar_base
 LIG_TOPO_BASE := ligand_topos_params
 VMD           := vmd
 
