@@ -15,7 +15,7 @@
 # is skipped if its ligand isn't parameterized yet. Run generate_structures.py
 # (builds the complexes incl. the boltz one) before make.
 
-.PHONY: all list clean-done
+.PHONY: all list status refresh-scripts eq-local eq-slurm submit progress clean-done
 
 DATA          := ../../data/predictions
 TOPPAR_BASE   := /serviceberry/tank/abdolla/SMBA/docking_methods_comparisons/vina_boltz/parameter_testing/toppar_from_af3_vina
@@ -64,8 +64,9 @@ cp "$$LPRM" "$$TOP/lig.prm"; \
 ln -sfn ../toppar "$$OUT/toppar"; \
 sed 's|__LIGAND_PARAMS__|parameters      toppar/lig.prm|' src/system_eq.namd.template  > "$$OUT/system_eq.namd"; \
 sed 's|__LIGAND_PARAMS__|parameters      toppar/lig.prm|' src/system_run.namd.template > "$$OUT/system_run.namd"; \
-sed 's/defaultjob/eq_$(ID)_$(SIM)/'  src/eq.sh  > "$$OUT/eq.sh"; \
-sed 's/defaultjob/run_$(ID)_$(SIM)/' src/run.sh > "$$OUT/run.sh"; \
+sed 's/defaultjob/eq_$(ID)_$(SIM)/'      src/eq.sh     > "$$OUT/eq.sh"; \
+sed 's/__JOB_NAME__/run_$(ID)_$(SIM)/'   src/run.sh    > "$$OUT/run.sh"; \
+sed 's/__JOB_NAME__/run_$(ID)_$(SIM)_gh/' src/run_gh.sh > "$$OUT/run_gh.sh"; \
 $(VMD) -dispdev text -e build_system.tcl -args "$<" "$$OUT" "$(LIG)"; \
 if [ -f "$$OUT/system.psf" ] && [ -f "$$OUT/system.pdb" ] && [ -f "$$OUT/system.xsc" ]; then \
 	touch "$$OUT/.done"; \
@@ -95,6 +96,42 @@ list:
 	      "$(if $(wildcard $(LIG_TOPO_BASE)/$(LG)/*.rtf),ok,MISSING)"; )))
 	@echo
 	@echo "proteins (af3_pocket): $(words $(AF3_IDS))"
+
+# readiness: how many sims are built (.done present) out of the total
+status:
+	@n=$$(ls $(ALL_DONE) 2>/dev/null | wc -l); t=$(words $(ALL_DONE)); \
+	echo "sims ready: $$n / $$t"; \
+	if [ "$$n" -eq "$$t" ]; then echo ">>> ALL SIMS READY"; \
+	else echo "not built yet:"; for d in $(ALL_DONE); do [ -f "$$d" ] || echo "  $$(dirname $$d)"; done; fi
+
+# re-derive the generated scripts (eq.sh, run.sh, *.namd) from src/ for every
+# built sim dir -- use after editing a template in src/, no VMD rebuild needed.
+refresh-scripts:
+	@n=0; for t in $(ALL_DONE); do \
+	  d=$$(dirname "$$t"); [ -d "$$d" ] || continue; \
+	  sim=$$(basename "$$d"); id=$$(basename "$$(dirname "$$(dirname "$$d")")"); \
+	  sed 's/defaultjob/eq_'"$$id"'_'"$$sim"'/'        src/eq.sh     > "$$d/eq.sh"; \
+	  sed 's/__JOB_NAME__/run_'"$$id"'_'"$$sim"'/'     src/run.sh    > "$$d/run.sh"; \
+	  sed 's/__JOB_NAME__/run_'"$$id"'_'"$$sim"'_gh/'  src/run_gh.sh > "$$d/run_gh.sh"; \
+	  sed 's|__LIGAND_PARAMS__|parameters      toppar/lig.prm|' src/system_eq.namd.template  > "$$d/system_eq.namd"; \
+	  sed 's|__LIGAND_PARAMS__|parameters      toppar/lig.prm|' src/system_run.namd.template > "$$d/system_run.namd"; \
+	  n=$$((n+1)); \
+	done; \
+	echo "refreshed scripts in $$n sim dirs"
+
+# --- job submission is handled by the throttled python managers ---
+#   python run_local_eq.py   # eq stage 0 locally           -> system_eq000.coor
+#   python submit_eq.py      # eq stage 1 (2 ns) via SLURM   -> system_eq001.coor
+#   python submit_runs.py    # production run.sh + run_gh.sh until each hits 250 ns
+#   python val_runs.py       # report eq stages + production (ns) progress
+eq-local:
+	python run_local_eq.py
+eq-slurm:
+	python submit_eq.py
+submit:
+	python submit_runs.py
+progress:
+	python val_runs.py
 
 clean-done:
 	rm -f $(ALL_DONE)

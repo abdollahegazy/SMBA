@@ -1,9 +1,7 @@
 #!/bin/bash --login
-#SBATCH -C [neh|nfh|nal|nif|nvf]
-#SBATCH --gres=gpu:2
+#SBATCH --constraint=NOAUTO:grace
+#SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus-per-task=2
-#SBATCH --gres-flags=enforce-binding
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=24G
@@ -11,9 +9,7 @@
 #SBATCH --account=vermaaslab
 #SBATCH -J __JOB_NAME__
 
-# Safety: bail if this sim's normal OR _gh sibling is already RUNNING. We submit
-# both run.sh and run_gh.sh (can't request normal + grace nodes in one job), so
-# whichever starts first wins; this stops the two from racing on the same dir.
+# Safety: bail if this sim's normal OR _gh sibling is already RUNNING (see run.sh).
 BASE_NAME=${SLURM_JOB_NAME%_gh}
 RUNNING=$(squeue --me -h -t RUNNING --format="%j %i" | grep -E "^${BASE_NAME}(_gh)? " | grep -v "$SLURM_JOB_ID" | wc -l)
 if [ "$RUNNING" -gt 0 ]; then
@@ -21,11 +17,11 @@ if [ "$RUNNING" -gt 0 ]; then
     exit 0
 fi
 
-cd $SLURM_SUBMIT_DIR
+source /cvmfs/software.eessi.io/versions/2023.06/init/bash && module use /opt/modules/all
+module --force purge
 
-module purge
-module use /mnt/home/vermaasj/modules
-module load NAMD/3.0.1-gpu
+cd $SLURM_SUBMIT_DIR
+NAMD=/mnt/home/vermaasj/namd/Linux-ARM64-g++/namd3
 
 # --- benchmark 2000 steps to size the production run to the remaining walltime ---
 cp system_run.namd _bench.namd
@@ -34,7 +30,7 @@ sed -i "s/^dcdfreq.*/#&/" _bench.namd
 sed -i "s/^restartfreq.*/#&/" _bench.namd
 sed -i "s/^outputTiming.*/outputTiming 100/" _bench.namd
 sed -i "s/^outputname.*/outputname _bench_out/" _bench.namd
-srun namd3 +p8 +setcpuaffinity +devices 0,1 _bench.namd > _bench.log 2>&1
+srun $NAMD +p8 +setcpuaffinity +devices 0 _bench.namd > _bench.log 2>&1
 
 NS_PER_DAY=$(grep "^TIMING" _bench.log | awk '{for(i=1;i<=NF;i++) if($i=="ns/days,") print $(i-1)}' | awk '{s+=$1; n++} END {print s/n}')
 if [ -z "$NS_PER_DAY" ]; then
@@ -53,8 +49,8 @@ sed -i "s/^run .*/run $NSTEPS/" system_run.namd
 NUM=$(ls system_run[0-9][0-9][0-9].dcd 2>/dev/null | wc -l)
 printf -v PRINTNUM "%03d" "$NUM"
 echo "(output index $PRINTNUM)"
-srun namd3 \
-    +p8 +setcpuaffinity +devices 0,1 \
+srun $NAMD \
+    +p8 +setcpuaffinity +devices 0 \
     system_run.namd \
     > system_run${PRINTNUM}.log \
     2> system_run${PRINTNUM}.err
