@@ -107,7 +107,7 @@ def _ref_graph_from_rtf(rtf_path: Path):
             continue
         if tok[0] == "ATOM" and len(tok) >= 2:
             name = tok[1]
-            elem = re.match(r"[A-Za-z]+", name).group().capitalize()
+            elem = re.match(r"[A-Za-z]+", name).group().capitalize() # pyright: ignore[reportOptionalMemberAccess]
             if elem == "H":
                 continue
             idx_of[name] = len(names)
