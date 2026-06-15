@@ -1,75 +1,107 @@
-import pandas as pd
-from pathlib import Path
+import re
 import subprocess
+import tempfile
+from pathlib import Path
 
 from utils import DATA_DIR
 
-def extract_best_ligand(out_poses:Path):
-    content = out_poses.read_text()
-    models = {}
+POSE_RE = re.compile(r"out_poses_c(\d+)_p(\d+)\.pdbqt$")
 
-    current_model = None
-    current_affinity = None
-    current_lines = []
 
-    for line in content.splitlines():
+def model1_affinity(pose_file: Path) -> float | None:
+    """Return the affinity of MODEL 1 (the best pose) in a vina out_poses file."""
+    in_model1 = False
+    for line in pose_file.read_text().splitlines():
         if line.startswith("MODEL"):
-            current_model = int(line.split()[1])
-            current_lines = [line]
-        elif line.startswith("REMARK VINA RESULT:"):
-            current_affinity = float(line.split()[3])
-            current_lines.append(line)
-        elif line.startswith("ENDMDL"):
-            current_lines.append(line)
-            models[current_model] = {
-                "ligand_file": "\n".join(current_lines),
-                "affinity": current_affinity,
-            }
-        else:
-            current_lines.append(line)
+            in_model1 = int(line.split()[1]) == 1
+        elif in_model1 and line.startswith("REMARK VINA RESULT:"):
+            return float(line.split()[3])
+    return None
 
-    return models
 
-def create_complex(protein_path:Path,ligand_path:Path,outpath:Path):
-    subprocess.run(["vmd2","-dispdev","text","-e","smba_post/combine.tcl","-args",protein_path,ligand_path,outpath],check=True)
+def extract_model1(pose_file: Path) -> str:
+    """Return the text block of MODEL 1 only (most negative affinity)."""
+    lines = []
+    in_model1 = False
+    for line in pose_file.read_text().splitlines():
+        if line.startswith("MODEL"):
+            in_model1 = int(line.split()[1]) == 1
+        if in_model1:
+            lines.append(line)
+        if in_model1 and line.startswith("ENDMDL"):
+            break
+    return "\n".join(lines) + "\n"
+
+
+COMBINE_TCL = Path(__file__).resolve().parent / "combine.tcl"
+
+
+def pdbqt_to_pdb(pdbqt_text: str, dst: Path):
+    """Convert a ligand pdbqt block to a PDB file via obabel."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "lig.pdbqt"
+        src.write_text(pdbqt_text)
+        subprocess.run(["obabel", str(src), "-O", str(dst)], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def create_complex(protein_pdb: Path, ligand_pdb: Path, outpath: Path):
+    """Merge protein (chain P) + ligand (chain L) with topotools via VMD."""
+    subprocess.run(
+        ["vmd2", "-dispdev", "text", "-e", str(COMBINE_TCL),
+         "-args", str(protein_pdb), str(ligand_pdb), str(outpath)],
+        check=True,
+    )
+
+
+def best_pose_for_ligand(ligand_dir: Path) -> tuple[Path, int, float] | None:
+    """Find the out_poses file whose MODEL 1 has the most negative affinity."""
+    best = None  # (pose_file, conformation, affinity)
+    for pose_file in ligand_dir.glob("out_poses_c*_p*.pdbqt"):
+        m = POSE_RE.search(pose_file.name)
+        if not m:
+            continue
+        affinity = model1_affinity(pose_file)
+        if affinity is None:
+            continue
+        conformation = int(m.group(1))
+        if best is None or affinity < best[2]:
+            best = (pose_file, conformation, affinity)
+    return best
 
 
 def main():
-    data = pd.read_csv(DATA_DIR.parent / 'docking_results.csv')
-
-    for _, row in data.iterrows():
-        protein = row['protein']
-        ligand = row['ligand']
-        affinity = row["best_affinity"]
-        conformation = row['conformation']
-        pocket = row['pocket']
-
-        protein_dir = (DATA_DIR/protein).resolve()
-        structures_dir = Path(f'{protein_dir}/smba_structures')
-        structures_dir.mkdir(exist_ok=True,parents=True)
-
-        outpath = structures_dir /  f"{ligand}_c{conformation}_p{pocket}.pdb" 
-        
-        # if exists and more than 10 lines. kinda arbitrary
-        if outpath.exists() and len(outpath.read_text().splitlines()) > 10:
+    for protein_dir in sorted(DATA_DIR.iterdir()):
+        docking_root = protein_dir / "docking" / "docking"
+        if not docking_root.is_dir():
             continue
-        
-        smba_ligands_path = protein_dir / "docking" / str(ligand) / f"out_poses_c{conformation}_p{pocket}.pdbqt"
-        ligand_models = extract_best_ligand(smba_ligands_path)
-        best_ligand,best_affiinity = ligand_models[1].values()
-        assert best_affiinity == affinity, "Something went wrong extracting the best ligand"
-    
-        ligand_filename = f"{ligand}_c{conformation}_p{pocket}.pdbqt"
-        ligand_filepath = structures_dir / ligand_filename
-        ligand_filepath.write_text(best_ligand)
 
-        corresponding_protein = protein_dir / "conformation" / f"protein_conf{conformation}.pdb"
+        for ligand_dir in sorted(docking_root.iterdir()):
+            if not ligand_dir.is_dir():
+                continue
+            ligand = ligand_dir.name
 
-        create_complex(corresponding_protein,ligand_filepath,outpath)
-        ligand_filepath.unlink() 
-        break
+            best = best_pose_for_ligand(ligand_dir)
+            if best is None:
+                print(f"[skip] no poses for {protein_dir.name}/{ligand}")
+                continue
+            pose_file, conformation, affinity = best
 
+            outpath = ligand_dir / f"{ligand}_best_complex.pdb"
+            if outpath.exists() and len(outpath.read_text().splitlines()) > 10:
+                continue
 
+            protein_pdb = protein_dir / "conformation" / f"protein_conf{conformation}.pdb"
+            if not protein_pdb.exists():
+                print(f"[skip] missing protein {protein_pdb}")
+                continue
+
+            ligand_pdb = ligand_dir / f"{ligand}_best_pose.pdb"
+            pdbqt_to_pdb(extract_model1(pose_file), ligand_pdb)
+            create_complex(protein_pdb, ligand_pdb, outpath)
+            ligand_pdb.unlink()
+            print(f"[ok] {protein_dir.name}/{ligand}  conf={conformation}  "
+                  f"affinity={affinity}  -> {outpath}")
 
 
 if __name__ == "__main__":

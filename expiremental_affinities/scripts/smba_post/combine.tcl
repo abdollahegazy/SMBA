@@ -9,6 +9,7 @@ mol new $ligand_file type pdb
 
 set prot [atomselect 0 "all"]
 set lig [atomselect 1 "all"]
+$prot set chain "P"
 $lig set chain "L"
 
 
